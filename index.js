@@ -63,7 +63,7 @@ function create(title) {
  * fetch all migrations in database
  */
 async function fetchMigrations() {
-  return (await transaction(`SELECT * FROM "Migration";`)).rows.map(row => row.version);
+  return (await transaction('SELECT * FROM "Migration";')).rows.map(row => row.version);
 }
 
 /**
