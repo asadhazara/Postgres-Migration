@@ -1,5 +1,4 @@
 // @ts-check
-
 const { program } = require('commander');
 const { lstatSync, readdirSync, closeSync, openSync, readFileSync, mkdirSync } = require('fs');
 const { Pool } = require('pg');
@@ -64,30 +63,35 @@ function create(title) {
  * fetch all migrations in database
  */
 async function fetchMigrations() {
-  return (await transaction(`SELECT * FROM "Migration";`)).rows.map(row => row.name);
+  return (await transaction(`SELECT * FROM "Migration";`)).rows.map(row => row.version);
 }
 
 /**
  * Run all of the available migrations.
  */
 async function migrate() {
-  await transaction('CREATE TABLE IF NOT EXISTS "Migration"(name VARCHAR(255) NOT NULL);');
+  await transaction(`
+    CREATE TABLE IF NOT EXISTS "Migration"(
+      version BIGINT PRIMARY KEY NOT NULL,
+      name VARCHAR(255) NOT NULL
+    );
+  `);
 
   const directories = getDirectories(join(__dirname, 'migration'));
   const migrations = await fetchMigrations();
 
   for (const directory of directories) {
-    const name = directory.split('/').pop();
+    const [version, name] = directory.split('/').pop().split('-');
 
-    if (migrations.includes(name)) continue;
+    if (migrations.includes(version)) continue;
 
     const query = readFileSync(join(directory, 'up.sql')).toString();
 
     if (!query) continue;
 
-    await transaction(`INSERT INTO "Migration" VALUES ('${name}');${query}`);
+    await transaction(`INSERT INTO "Migration" VALUES (${version}, '${name}');${query}`);
 
-    console.log(chalk.blue(query));
+    console.log(chalk.green('MIGRATED', version), chalk.blue(name));
   }
 
   process.exit();
@@ -107,17 +111,17 @@ async function rollback(options) {
   for (const directory of directories.reverse()) {
     if (!options.all && removedCount > 0) break;
 
-    const name = directory.split('/').pop();
+    const [version, name] = directory.split('/').pop().split('-');
 
-    if (!migrations.includes(name)) continue;
+    if (!migrations.includes(version)) continue;
 
     const query = readFileSync(join(directory, 'down.sql')).toString();
 
     if (!query) continue;
 
-    await transaction(`DELETE FROM "Migration" WHERE name = '${name}';${query}`);
+    await transaction(`DELETE FROM "Migration" WHERE version = ${version};${query}`);
 
-    console.log(chalk.blue(query));
+    console.log(chalk.green('REVERTED', version), chalk.blue(name));
     removedCount++;
   }
 
